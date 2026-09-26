@@ -1,0 +1,14 @@
+{
+  "name": "claude-forgejo-issues",
+  "description": "Treats a Forgejo repo's issue tracker as the agent's TODO store.",
+  "owner": {
+    "name": "Danya Generalov"
+  },
+  "plugins": [
+    {
+      "name": "forgejo-issues",
+      "source": "./",
+      "description": "Turns a Forgejo repo's issue tracker into a TODO store the agent can see and edit: open TODOs injected as context, six MCP tools to list, read, create, edit, comment and close."
+    }
+  ]
+}

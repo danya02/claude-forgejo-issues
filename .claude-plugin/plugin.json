@@ -1,0 +1,64 @@
+{
+  "name": "forgejo-issues",
+  "displayName": "Forgejo Issues",
+  "version": "0.1.0",
+  "description": "Turns a Forgejo repo's issue tracker into a TODO store the agent can see and edit: open TODOs injected as context, tools to list, read, create, edit, comment and close.",
+  "keywords": [
+    "forgejo",
+    "gitea",
+    "issues",
+    "todo",
+    "mcp",
+    "hooks"
+  ],
+  "author": {
+    "name": "Danya Generalov"
+  },
+  "mcpServers": "./.mcp.json",
+  "userConfig": {
+    "forge_host": {
+      "type": "string",
+      "title": "Forge host",
+      "description": "Hostname of the Forgejo/Gitea instance. The plugin activates in a repo only when a git remote URL points at this host.",
+      "default": "git.danya02.ru"
+    },
+    "marker_label": {
+      "type": "string",
+      "title": "Marker label",
+      "description": "Only issues carrying this label count as agent TODOs: the hook injects only them, list shows only them, and create tags new issues with it. Created automatically on first create.",
+      "default": "agent-todo"
+    },
+    "inject_on_prompt": {
+      "type": "boolean",
+      "title": "Refresh the TODO list on every prompt",
+      "description": "Re-check the issue list on every prompt, not just at session start. When nothing moved since the last injection, one short line is emitted instead of the full block.",
+      "default": false
+    },
+    "attribution": {
+      "type": "boolean",
+      "title": "Attribute created content",
+      "description": "Append a 'Written by Claude with claude-forgejo-issues' note to issues and comments the tools create, so agent-authored content is distinguishable from yours.",
+      "default": true
+    },
+    "attribution_session": {
+      "type": "boolean",
+      "title": "Reference the session id",
+      "description": "Include the Claude Code session id in the attribution line, so an issue or comment can be traced back to the session that produced it.",
+      "default": true
+    },
+    "request_timeout_seconds": {
+      "type": "number",
+      "title": "Request timeout (seconds)",
+      "description": "How long a request to the forge may take before it is abandoned.",
+      "default": 5,
+      "min": 1,
+      "max": 30
+    },
+    "debug_log": {
+      "type": "boolean",
+      "title": "Log errors",
+      "description": "Append internal errors to errors.ndjson in the plugin data directory. The hook and tools stay functional either way.",
+      "default": false
+    }
+  }
+}
