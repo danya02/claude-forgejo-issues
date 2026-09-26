@@ -7,8 +7,9 @@ Claude Code caches installed plugins per version, so a changed plugin with an
 unchanged version can keep running old code until it is reinstalled.
 
 Setup used here: forge `git.danya02.ru` (Forgejo 16.0.5+gitea-1.22.0), test
-repo `danya/ci-demo`, an issues-only token at
-`~/.config/claude-forgejo-issues/token`.
+repo `danya/ci-demo`, an issues-only token (at
+`~/.config/claude-forgejo-issues/token` for the early checks; check 10 moves
+it into the plugin options and back).
 
 ## 0. Load the plugin from the checkout
 
@@ -78,7 +79,9 @@ repo:
 Temporarily rename the token file, start a session in a forge repo:
 
 - Exactly one visible error naming `~/.config/claude-forgejo-issues/token`
-  (and nothing on the second prompt, if per-prompt refresh is on).
+  (and nothing on the second prompt, if per-prompt refresh is on). The
+  message also names the Configure options dialog and the token-creation URL
+  on the configured host.
 - Restore the token file; a NEW session should work again. Within the same
   session, a recovery can re-trigger reporting by design.
 
@@ -106,3 +109,40 @@ data directory (`errors.ndjson`) and any visible output for the token value:
 
 - The token must not appear anywhere. Errors carry method, URL, and route,
   never the Authorization header.
+
+## 10. Configure options (the settings dialog and the token field)
+
+Open `/plugin`, press Enter on Forgejo Issues, choose **Configure options**:
+
+- Eight fields appear; the token input is masked.
+- Set a distinctive `marker_label` (e.g. `test-todo`), restart, and in a forge
+  repo confirm BOTH the hook (injection line / TODO list) and the tools
+  (`create_issue` tags with the new label) use it -- this proves settings
+  reach both processes. The docs only guarantee hooks receive option env
+  vars; the `.mcp.json` env map is what carries them to the MCP server, and
+  this check proves it end to end.
+- Set the token via the dialog, temporarily move the token file away, and
+  confirm session-start injection and `list_issues` still work -- proves the
+  sensitive option reaches hook AND MCP server.
+- Grep `~/.claude/settings.json` for the token value: it must be absent
+  (the sensitive store -- `~/.claude/.credentials.json` or the Keychain --
+  is the expected location). Restore the original marker label afterwards.
+
+## 11. Unset options fall back to defaults
+
+With nothing configured (no `pluginConfigs` entries):
+
+- In a forge repo, defaults still work (checks 1 and 3 pass).
+- No literal `${user_config.` may appear in any error, tool output, or
+  injected context -- the placeholder guard must absorb it wherever it
+  appears.
+
+## 12. /forgejo-issues:setup
+
+Run the command in a forge repo and in a non-forge repo:
+
+- It walks host resolution, remotes, token presence and verification, and
+  ends with the outcome table (working / label missing / no token / 401 / no
+  tools).
+- It never prints the token; a token offered in the chat is redirected to
+  the options dialog or the token file.

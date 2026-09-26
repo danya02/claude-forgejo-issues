@@ -15,16 +15,16 @@ import {
   forgeClient,
   listIssues,
   logError,
+  missingTokenMessage,
   paginate,
   readToken,
   renderList,
   resolveLabel,
   resolveTarget,
-  tokenPath,
 } from "./forgejo.mjs";
 
 // Keep in sync with .claude-plugin/plugin.json.
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 // The gate. CLAUDE_PROJECT_DIR is the repo Claude Code launched in; the
 // fallback covers bare `node mcp.mjs` runs.
@@ -275,11 +275,7 @@ const TOOLS = [
 
 async function callTool(name, args) {
   const token = readToken();
-  if (!token) {
-    return toolError(
-      `No Forgejo API token found. Put a token with issue scope at ${tokenPath()} or set CLAUDE_FORGEJO_ISSUES_TOKEN.`
-    );
-  }
+  if (!token) return toolError(missingTokenMessage());
   const client = forgeClient(TARGET, token);
   switch (name) {
     case "list_issues":

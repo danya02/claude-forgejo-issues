@@ -35,24 +35,34 @@ While developing from a local checkout:
 
 ## Token setup
 
-Create a Forgejo/Gitea API token with issue scope (that alone is enough -- the
-plugin never calls `/user` or repo search). Store it OUTSIDE any repo, either:
+The plugin needs a Forgejo/Gitea API token with the **issue** scope (that
+alone is enough -- the plugin never calls `/user` or repo search). Create one
+at `https://<your-host>/user/settings/applications` (on the default host:
+https://git.danya02.ru/user/settings/applications), then store it in one of
+three places, in order of preference:
 
-- in a file: `~/.config/claude-forgejo-issues/token` (contents: just the
-  token), or
-- in the environment: `CLAUDE_FORGEJO_ISSUES_TOKEN`.
+1. **Plugin options** (recommended): `/plugin`, Enter on Forgejo Issues,
+   **Configure options**, paste into "Forgejo API token". Input is masked and
+   the value goes to the OS secure store -- never into `settings.json`.
+2. **Token file**: `~/.config/claude-forgejo-issues/token` (contents: just
+   the token; `umask 077` first).
+3. **Environment**: `CLAUDE_FORGEJO_ISSUES_TOKEN` (handy for one-off runs).
 
-The token is never written to the repo, never logged, and never appears in an
-error message.
+Precedence: plugin option > environment > file. The token is never written to
+the repo, never logged, and never appears in an error message.
 
 ## Configuration
 
-Set via `/plugin` settings (per install) or a config file
-`~/.config/claude-forgejo-issues/config.json` (per machine); plugin settings
-win. All values have defaults.
+Set via the plugin's options (`/plugin`, Enter on Forgejo Issues, **Configure
+options**; stored per user in `~/.claude/settings.json`, except the token,
+which goes to the OS secure store) or a config file
+`~/.config/claude-forgejo-issues/config.json` (per machine); plugin options
+win. All values have defaults, and the option descriptions in the dialog
+carry examples.
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
+| `forgejo_token` | string | *(empty)* | The API token (see Token setup). Sensitive: masked input, stored in the OS secure store. |
 | `forge_host` | string | `git.danya02.ru` | Hostname of the forge. A repo activates when any remote URL points at this host. |
 | `marker_label` | string | `agent-todo` | Issues carrying this label are the TODOs: injected, listed, and added to new issues. Created automatically on first `create_issue`. |
 | `inject_on_prompt` | boolean | `false` | Also refresh the TODO list on every prompt, not just at session start. |
@@ -72,6 +82,13 @@ win. All values have defaults.
 | `add_comment` | Comment on an issue, attribution appended. |
 | `set_issue_state` | Close (TODO done) or reopen. |
 
+## Command
+
+`/forgejo-issues:setup` -- guided setup and troubleshooting: resolves the
+forge host, checks the repo's remotes against it, verifies token presence
+without ever displaying the token, and walks through creation and first-use
+verification.
+
 ## The hook
 
 At session start in a forge repo the hook injects the open TODO list as
@@ -90,7 +107,7 @@ path. Silence in a non-forge repo is by design.
 node tests/run.mjs
 ```
 
-35 offline tests: a local HTTP server stands in for the forge, a fake `git`
+40 offline tests: a local HTTP server stands in for the forge, a fake `git`
 stands in for remotes, and the hook and MCP server run as real subprocesses.
 Live-forge checks (run against a real instance, by hand or by an agent) are in
 `tests/MANUAL.md`.

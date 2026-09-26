@@ -258,6 +258,70 @@ await test("config: plugin options beat config.json beats defaults", async () =>
   }
 });
 
+await test("token: plugin option beats env beats file beats nothing", () => {
+  const saved = process.env.CLAUDE_FORGEJO_ISSUES_TOKEN;
+  try {
+    process.env.CLAUDE_PLUGIN_OPTION_FORGEJO_TOKEN = "opt-token-1";
+    process.env.CLAUDE_FORGEJO_ISSUES_TOKEN = "env-token-2";
+    eq(forgejo.readToken(), "opt-token-1");
+    delete process.env.CLAUDE_PLUGIN_OPTION_FORGEJO_TOKEN;
+    eq(forgejo.readToken(), "env-token-2");
+    process.env.CLAUDE_FORGEJO_ISSUES_TOKEN = "";
+    writeFileSync(join(pluginConfigDir, "token"), " file-token-3 \n");
+    eq(forgejo.readToken(), "file-token-3");
+    rmSync(join(pluginConfigDir, "token"));
+    eq(forgejo.readToken(), null, "nothing anywhere -> null");
+  } finally {
+    if (saved === undefined) delete process.env.CLAUDE_FORGEJO_ISSUES_TOKEN;
+    else process.env.CLAUDE_FORGEJO_ISSUES_TOKEN = saved;
+    delete process.env.CLAUDE_PLUGIN_OPTION_FORGEJO_TOKEN;
+    rmSync(join(pluginConfigDir, "token"), { force: true });
+  }
+});
+
+await test("literal ${user_config.*} option values count as unset", async () => {
+  const saved = process.env.CLAUDE_FORGEJO_ISSUES_TOKEN;
+  try {
+    process.env.CLAUDE_PLUGIN_OPTION_FORGE_HOST = "${user_config.forge_host}";
+    let mod = await freshImport("forgejo.mjs");
+    eq(mod.config.host, "git.danya02.ru", "placeholder host falls back to the default");
+
+    process.env.CLAUDE_PLUGIN_OPTION_FORGEJO_TOKEN = "${user_config.forgejo_token}";
+    process.env.CLAUDE_FORGEJO_ISSUES_TOKEN = "";
+    eq(forgejo.readToken(), null, "placeholder token counts as missing");
+
+    process.env.CLAUDE_PLUGIN_OPTION_FORGE_HOST = "pre${user_config.x}post";
+    mod = await freshImport("forgejo.mjs");
+    eq(mod.config.host, "pre${user_config.x}post", "partial embedding survives (whole-value match)");
+  } finally {
+    delete process.env.CLAUDE_PLUGIN_OPTION_FORGE_HOST;
+    delete process.env.CLAUDE_PLUGIN_OPTION_FORGEJO_TOKEN;
+    if (saved === undefined) delete process.env.CLAUDE_FORGEJO_ISSUES_TOKEN;
+    else process.env.CLAUDE_FORGEJO_ISSUES_TOKEN = saved;
+  }
+});
+
+await test("missingTokenMessage names the path, the URL and every storage choice", () => {
+  const msg = forgejo.missingTokenMessage();
+  includes(msg, "No Forgejo API token");
+  includes(msg, join(pluginConfigDir, "token"));
+  includes(msg, "user/settings/applications");
+  includes(msg, "CLAUDE_FORGEJO_ISSUES_TOKEN");
+});
+
+await test("plugin.json userConfig, .mcp.json env map and VERSION stay in sync", () => {
+  const manifest = JSON.parse(readFileSync(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8"));
+  const mcpJson = JSON.parse(readFileSync(new URL("../.mcp.json", import.meta.url), "utf8"));
+  const env = mcpJson.mcpServers.fj.env ?? {};
+  const keys = Object.keys(manifest.userConfig);
+  eq(keys.length, Object.keys(env).length, "exactly one env entry per userConfig key");
+  for (const key of keys) {
+    eq(env[`CLAUDE_PLUGIN_OPTION_${key.toUpperCase()}`], `\${user_config.${key}}`, `env map carries ${key}`);
+  }
+  const version = readFileSync(new URL("../scripts/mcp.mjs", import.meta.url), "utf8").match(/^const VERSION = "(.*)";$/m)?.[1];
+  eq(version, manifest.version, "mcp.mjs VERSION matches plugin.json");
+});
+
 await test("attribution: session part follows its toggle", async () => {
   includes(forgejo.attribution(), `session \`${process.env.CLAUDE_CODE_SESSION_ID}\``);
   includes(forgejo.attribution(), "Written by Claude with");
@@ -458,6 +522,7 @@ await test("hook: missing token reports once and names the token path", async ()
   const first = await runHook(hookInput("SessionStart", sid), { CLAUDE_FORGEJO_ISSUES_TOKEN: "" });
   includes(hookContext(first), "No Forgejo API token");
   includes(hookContext(first), join(pluginConfigDir, "token"));
+  includes(hookContext(first), "user/settings/applications");
   const second = await runHook(hookInput("SessionStart", sid), { CLAUDE_FORGEJO_ISSUES_TOKEN: "" });
   eq(hookContext(second), null, "reported once per session");
   eq(requests, []);
@@ -469,6 +534,18 @@ await test("hook: token file (XDG seam) is honored when env is unset", async () 
   requests = [];
   const r = await runHook(hookInput("SessionStart", nextSid()), { CLAUDE_FORGEJO_ISSUES_TOKEN: "" });
   includes(hookContext(r), "#4 Fix CI on main");
+});
+
+await test("hook: a token in plugin options is used", async () => {
+  rmSync(join(pluginConfigDir, "token"), { force: true });
+  routes = defaultRoutes();
+  requests = [];
+  const r = await runHook(hookInput("SessionStart", nextSid()), {
+    CLAUDE_FORGEJO_ISSUES_TOKEN: "",
+    CLAUDE_PLUGIN_OPTION_FORGEJO_TOKEN: "opt-token-789",
+  });
+  includes(hookContext(r), "#4 Fix CI on main", "hook proceeded with the option token");
+  eq(requests.length, 2, "labels + issues queried");
 });
 
 await test("hook: malformed stdin exits 0 silently", () => {
@@ -769,6 +846,7 @@ await test("mcp: token absence is a clean tool error, not a dead server", async 
     const res = await noToken.call({ method: "tools/call", params: { name: "list_issues", arguments: {} } });
     eq(res.result.isError, true);
     includes(res.result.content[0].text, "No Forgejo API token");
+    includes(res.result.content[0].text, "user/settings/applications");
   } finally {
     noToken.stop();
     eq(await noToken.exited, 0);

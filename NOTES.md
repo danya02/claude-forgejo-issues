@@ -112,6 +112,24 @@ token, outside any repo. A missing or invalid config.json falls back to
 defaults silently -- it is optional by design; operational failures (network,
 API, token) are never silent.
 
+The token follows the same precedence: plugin option (the "Forgejo API
+token" field -- `sensitive`, so it is masked in the dialog and stored in the
+OS secure store, never in settings.json) > `CLAUDE_FORGEJO_ISSUES_TOKEN` >
+the token file. There is deliberately no config.json token key: the chain
+stays three sources.
+
+One asymmetry is load-bearing: `CLAUDE_PLUGIN_OPTION_*` env vars are
+documented for hook processes only. MCP stdio servers receive settings only
+via `${user_config.<key>}` substitution in the server's `env` map, so
+`.mcp.json` maps every option to its `CLAUDE_PLUGIN_OPTION_*` name
+explicitly. Before that map existed, the tools silently ran on defaults no
+matter what was configured -- the hook honored settings, the MCP server did
+not. What an unset option substitutes to is undocumented (empty string,
+absent variable, or the literal placeholder), so `envString` treats a value
+that is *exactly* a `${user_config.<key>}` placeholder as unset -- a
+whole-value match, because a real value merely containing that substring
+must survive.
+
 ## Scope guard
 
 The plugin does issues and comments: list, get, create, edit, comment, close,

@@ -74,9 +74,18 @@ function readConfigFile() {
   }
 }
 
+// Claude Code substitutes ${user_config.<key>} into .mcp.json env values;
+// when an option was never configured, what arrives can be the literal
+// placeholder text, which counts as unset. Whole-value match: a real value
+// that merely contains that substring is never discarded. What an unset
+// option substitutes to is undocumented, so all three shapes (empty string,
+// absent variable, literal placeholder) must fall through.
 function envString(key) {
   const raw = process.env[`CLAUDE_PLUGIN_OPTION_${key.toUpperCase()}`];
-  return typeof raw === "string" && raw.trim() !== "" ? raw.trim() : null;
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  if (value === "") return null;
+  return /^\$\{user_config\.[A-Za-z0-9_]+\}$/.test(value) ? null : value;
 }
 
 // "true"/"1" and "false"/"0" are accepted; anything else counts as unset so
@@ -130,10 +139,13 @@ export const config = {
 // Token
 // ---------------------------------------------------------------------------
 
-// Env var first (handy for one-off runs and CI), then the token file. A
+// Plugin option first (the /plugin dialog, stored in the OS secure store),
+// then the env var (handy for one-off runs and CI), then the token file. A
 // missing token is not an error here -- the hook reports it once, MCP tools
 // answer with a clean error, and nothing crashes.
 export function readToken() {
+  const option = envString("forgejo_token");
+  if (option) return option;
   const env = process.env.CLAUDE_FORGEJO_ISSUES_TOKEN;
   const fromEnv = env && env.trim() !== "" ? env.trim() : null;
   if (fromEnv) return fromEnv;
@@ -143,6 +155,18 @@ export function readToken() {
   } catch {
     return null;
   }
+}
+
+// The one message both consumers (hook, MCP tools) show when no token is
+// found. Names every storage choice and the token-creation URL on the
+// configured host, so a fresh install can act on it without the README.
+export function missingTokenMessage() {
+  return (
+    `No Forgejo API token found. Set "Forgejo API token" in the plugin's options ` +
+    `(/plugin, Enter on Forgejo Issues, Configure options), or put a token with ` +
+    `issue scope at ${tokenPath()}, or set CLAUDE_FORGEJO_ISSUES_TOKEN. ` +
+    `Create an issue-scoped token at https://${config.host}/user/settings/applications.`
+  );
 }
 
 // ---------------------------------------------------------------------------

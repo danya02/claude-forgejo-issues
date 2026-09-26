@@ -1,7 +1,7 @@
 {
   "name": "forgejo-issues",
   "displayName": "Forgejo Issues",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Turns a Forgejo repo's issue tracker into a TODO store the agent can see and edit: open TODOs injected as context, tools to list, read, create, edit, comment and close.",
   "keywords": [
     "forgejo",
@@ -16,10 +16,16 @@
   },
   "mcpServers": "./.mcp.json",
   "userConfig": {
+    "forgejo_token": {
+      "type": "string",
+      "title": "Forgejo API token",
+      "description": "Token used to read and write issues. Create one with only the issue scope: on the default host at https://git.danya02.ru/user/settings/applications, or the same path on your instance. Entered here it is stored in the OS secure store, never in settings.json. Leave empty to use the CLAUDE_FORGEJO_ISSUES_TOKEN environment variable or the file ~/.config/claude-forgejo-issues/token.",
+      "sensitive": true
+    },
     "forge_host": {
       "type": "string",
       "title": "Forge host",
-      "description": "Hostname of the Forgejo/Gitea instance. The plugin activates in a repo only when a git remote URL points at this host.",
+      "description": "Hostname of the Forgejo/Gitea instance, e.g. git.example.com or codeberg.org. The plugin activates in a repo only when a git remote URL points at this host.",
       "default": "git.danya02.ru"
     },
     "marker_label": {

@@ -2,7 +2,17 @@
   "mcpServers": {
     "fj": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/mcp.mjs"]
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/mcp.mjs"],
+      "env": {
+        "CLAUDE_PLUGIN_OPTION_FORGE_HOST": "${user_config.forge_host}",
+        "CLAUDE_PLUGIN_OPTION_MARKER_LABEL": "${user_config.marker_label}",
+        "CLAUDE_PLUGIN_OPTION_INJECT_ON_PROMPT": "${user_config.inject_on_prompt}",
+        "CLAUDE_PLUGIN_OPTION_ATTRIBUTION": "${user_config.attribution}",
+        "CLAUDE_PLUGIN_OPTION_ATTRIBUTION_SESSION": "${user_config.attribution_session}",
+        "CLAUDE_PLUGIN_OPTION_REQUEST_TIMEOUT_SECONDS": "${user_config.request_timeout_seconds}",
+        "CLAUDE_PLUGIN_OPTION_DEBUG_LOG": "${user_config.debug_log}",
+        "CLAUDE_PLUGIN_OPTION_FORGEJO_TOKEN": "${user_config.forgejo_token}"
+      }
     }
   }
 }

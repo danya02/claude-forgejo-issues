@@ -13,12 +13,12 @@ import {
   forgeClient,
   listIssues,
   logError,
+  missingTokenMessage,
   readSessionState,
   readToken,
   renderList,
   resolveLabel,
   resolveTarget,
-  tokenPath,
   writeSessionState,
 } from "./forgejo.mjs";
 
@@ -54,12 +54,7 @@ async function main() {
 
   const token = readToken();
   if (!token) {
-    reportOnce(
-      event,
-      sessionId,
-      state,
-      `No Forgejo API token found. Put a token with issue scope at ${tokenPath()} or set CLAUDE_FORGEJO_ISSUES_TOKEN.`
-    );
+    reportOnce(event, sessionId, state, missingTokenMessage());
     return;
   }
 
