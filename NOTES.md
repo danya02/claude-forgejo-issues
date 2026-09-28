@@ -46,15 +46,46 @@ machine). It is validated against a UUID-ish shape before use, so a future
 change of shape can only drop the session reference, never inject odd text
 into the forge.
 
-## The MCP gate exits at startup, and what is not yet measured
+## Outside a forge repo the MCP server stays up with one tool
 
-When the repo is not on the forge host, the MCP server exits 0 before the
-handshake. What Claude Code then shows for that server (no tools at all vs
-tools listed but failing) has not been observed yet -- it is the one open
-empirical question, recorded as a live check in tests/MANUAL.md. The fallback
-design is ready: keep the server alive and answer every tool call with a clean
-"not a forge repo" error. That variant is worse for the common case (tools
-cluttering every session) but safer if the exit turns out to be noisy.
+The first design exited 0 before the handshake. Observed: Claude Code marks
+such a server "failed", and it stays failed -- a later session in a forge
+repo needed a manual Reconnect in /mcp. So the server now always completes
+the handshake. Outside a forge repo it offers a single `status` tool whose
+one-line description says the tools are inactive and why, and whose result
+says how to activate them. That is a small, fixed context cost per session,
+traded for a server that never breaks.
+
+## Telling the agent when, not just how
+
+The tool descriptions say what each tool does. When to reach for them at
+all comes from two other places: the MCP `instructions` field (server-level,
+in context whenever the server is connected) and the session-start
+injection, which appends a usage line to the list and, when the marker label
+does not exist yet, still says the tracker exists. Without that line a repo
+with zero TODOs gave no hint, so "note this down" never landed in the forge.
+
+## Approval prompts are detected, not guessed
+
+Borrowed from super-edit: PreToolUse stamps the time, PostToolUse measures
+the gap. A gap above the request timeout plus 3s means the call waited on an
+approval dialog, and the agent is asked, once per session, to tell the user
+how to allow the server. An update that costs an approval every time is the
+likeliest reason for the agent to stop using the tools.
+
+## Attribution footers are stripped before re-appending
+
+`get_issue` hides footers (marking the issue or comment "agent-written"),
+and `edit_issue` strips any footer from the body it is given before appending
+a fresh one. Before this, a body read back and edited grew one footer per
+edit.
+
+## Boolean options render as text fields
+
+The manifest declares them `"type": "boolean"` exactly as documented, yet the
+/plugin dialog shows a free-text field. That is the dialog, not the schema;
+the descriptions say "Type true or false", and `envBool` treats anything else
+as unset, so a typo falls back to the default.
 
 ## Issue-scoped tokens are sufficient
 

@@ -53,14 +53,10 @@ repo):
 
 ## 4. MCP server in a non-forge repo: record what happens
 
-Open a session in a non-forge repo and check `/mcp`. **This is the open
-empirical question**: does a server that exits during startup show up as (a)
-not listed at all, or (b) listed but failing?
-
-- If (a): the design stands as is.
-- If (b): switch to the fallback described in NOTES.md ("The MCP gate exits
-  at startup...") -- keep the server alive and answer every tool call with a
-  clean "not a forge repo" error.
+Open a session in a non-forge repo and check `/mcp`: the server is
+connected (not "failed") with a single `status` tool, and calling it explains
+how to activate the plugin. Then open a session in a forge repo: the six
+tools are there without any Reconnect.
 
 ## 5. Per-prompt refresh (opt-in)
 

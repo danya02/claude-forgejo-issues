@@ -309,7 +309,7 @@ await test("missingTokenMessage names the path, the URL and every storage choice
   includes(msg, "CLAUDE_FORGEJO_ISSUES_TOKEN");
 });
 
-await test("plugin.json userConfig, .mcp.json env map and VERSION stay in sync", () => {
+await test("plugin.json userConfig and .mcp.json env map stay in sync", () => {
   const manifest = JSON.parse(readFileSync(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8"));
   const mcpJson = JSON.parse(readFileSync(new URL("../.mcp.json", import.meta.url), "utf8"));
   const env = mcpJson.mcpServers.fj.env ?? {};
@@ -318,8 +318,17 @@ await test("plugin.json userConfig, .mcp.json env map and VERSION stay in sync",
   for (const key of keys) {
     eq(env[`CLAUDE_PLUGIN_OPTION_${key.toUpperCase()}`], `\${user_config.${key}}`, `env map carries ${key}`);
   }
-  const version = readFileSync(new URL("../scripts/mcp.mjs", import.meta.url), "utf8").match(/^const VERSION = "(.*)";$/m)?.[1];
-  eq(version, manifest.version, "mcp.mjs VERSION matches plugin.json");
+  const prefix = `mcp__plugin_${manifest.name}_${Object.keys(mcpJson.mcpServers)[0]}__`;
+  includes(readFileSync(new URL("../scripts/hook.mjs", import.meta.url), "utf8"), `const TOOL_PREFIX = "${prefix}";`, "hook tool prefix");
+  eq(JSON.parse(readFileSync(new URL("../hooks/hooks.json", import.meta.url), "utf8")).hooks.PreToolUse[0].matcher, `${prefix}.*`, "hook matcher");
+});
+
+await test("stripAttribution removes stacked footers and only footers", async () => {
+  const { attribution, stripAttribution } = await freshImport("forgejo.mjs");
+  const footer = attribution();
+  eq(stripAttribution(`Body.${footer}${footer}\n`), { text: "Body.", attributed: true });
+  eq(stripAttribution("Body.\n\n---\nnot ours"), { text: "Body.\n\n---\nnot ours", attributed: false });
+  eq(stripAttribution(null), { text: "", attributed: false });
 });
 
 await test("attribution: session part follows its toggle", async () => {
@@ -452,11 +461,15 @@ await test("hook SessionStart: full TODO block on a forge repo", async () => {
   eq(state.hash?.length, 64, "state carries the rendered-list hash");
 });
 
-await test("hook: absent marker label means silence and no issues query", async () => {
+await test("hook: absent marker label means a short hint and no issues query", async () => {
   routes = [{ method: "GET", re: /\/labels\?/, handler: () => ({ body: [] }) }];
   requests = [];
   const r = await runHook(hookInput("SessionStart", nextSid()));
-  eq(r.stdout.trim(), "", "silent");
+  const out = JSON.parse(r.stdout);
+  includes(out.hookSpecificOutput.additionalContext, "none open");
+  includes(out.hookSpecificOutput.additionalContext, "create_issue");
+  includes(out.systemMessage, "no TODOs yet");
+  includes(out.hookSpecificOutput.additionalContext, "mcp__plugin_forgejo-issues_fj__create_issue", "exact tool name");
   eq(requests.some((q) => q.includes("/issues")), false, "never a name-filtered issues query");
 });
 
@@ -548,6 +561,23 @@ await test("hook: a token in plugin options is used", async () => {
   eq(requests.length, 2, "labels + issues queried");
 });
 
+await test("hook: a tool call that waited on approval advises allowing the server, once", async () => {
+  const sid = nextSid();
+  const base = { session_id: sid, tool_use_id: "toolu_1", tool_name: "mcp__plugin_forgejo-issues_fj__add_comment", permission_mode: "default", cwd: "/x" };
+  const run = (event) => runHook({ ...base, hook_event_name: event });
+  const backdate = () => writeFileSync(join(dataHome, "sessions", `${sid}-toolu_1.stamp`), String(Date.now() - 60000));
+  eq((await run("PreToolUse")).stdout.trim(), "", "pre is silent");
+  eq((await run("PostToolUse")).stdout.trim(), "", "a fast call says nothing");
+  await run("PreToolUse");
+  backdate();
+  const slow = JSON.parse((await run("PostToolUse")).stdout);
+  includes(slow.hookSpecificOutput.additionalContext, '"mcp__plugin_forgejo-issues_fj"');
+  includes(slow.systemMessage, "likely on approval");
+  await run("PreToolUse");
+  backdate();
+  eq((await run("PostToolUse")).stdout.trim(), "", "said once per session");
+});
+
 await test("hook: malformed stdin exits 0 silently", () => {
   const r = spawnSync(process.execPath, [HOOK], {
     input: "not json at all",
@@ -636,9 +666,14 @@ function makeMcp(extraEnv = {}) {
 
 let m = null;
 
-await test("mcp: not a forge repo exits 0 with no output", () => {
+await test("mcp: not a forge repo offers only the status tool", () => {
+  const msgs = [
+    { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },
+    { jsonrpc: "2.0", id: 2, method: "tools/list" },
+    { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "status", arguments: {} } },
+  ];
   const r = spawnSync(process.execPath, [MCP], {
-    input: "",
+    input: msgs.map((x) => JSON.stringify(x)).join("\n") + "\n",
     encoding: "utf8",
     timeout: 10000,
     env: {
@@ -648,7 +683,10 @@ await test("mcp: not a forge repo exits 0 with no output", () => {
     },
   });
   eq(r.status, 0);
-  eq(r.stdout.trim(), "", "no handshake, no output");
+  const [init, list, call] = r.stdout.trim().split("\n").map((l) => JSON.parse(l));
+  includes(init.result.instructions, "Not active here");
+  eq(list.result.tools.map((t) => t.name), ["status"]);
+  includes(call.result.content[0].text, "git remote add");
 });
 
 await test("mcp: initialize and tools/list", async () => {
@@ -661,6 +699,10 @@ await test("mcp: initialize and tools/list", async () => {
   m.sendOnly({ jsonrpc: "2.0", method: "notifications/initialized" });
   const tools = await m.call({ method: "tools/list" });
   eq(tools.result.tools.map((t) => t.name).sort(), ["add_comment", "create_issue", "edit_issue", "get_issue", "list_issues", "set_issue_state"]);
+  ok(tools.result.tools.every((t) => t.title && t.annotations), "every tool has a title and annotations");
+  includes(init.result.instructions, "danya/ci-demo");
+  const manifest = JSON.parse(readFileSync(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8"));
+  eq(init.result.serverInfo.version, manifest.version, "version read from plugin.json");
   const ping = await m.call({ method: "ping" });
   eq(ping.result, {});
 });
@@ -786,6 +828,9 @@ await test("mcp: edit_issue patches only given fields and validates", async () =
   const res = await m.call({ method: "tools/call", params: { name: "edit_issue", arguments: { number: 4, title: "Renamed", state: "closed" } } });
   includes(res.result.content[0].text, "Updated #4");
   eq(patch, { title: "Renamed", state: "closed" });
+  const { attribution } = await freshImport("forgejo.mjs");
+  await m.call({ method: "tools/call", params: { name: "edit_issue", arguments: { number: 4, body: `Read back.${attribution()}` } } });
+  eq(patch.body.match(/Written by Claude with/g)?.length, 1, "a read-back footer is replaced, not stacked");
   const empty = await m.call({ method: "tools/call", params: { name: "edit_issue", arguments: { number: 4 } } });
   eq(empty.result.isError, true);
   includes(empty.result.content[0].text, "Nothing to update");

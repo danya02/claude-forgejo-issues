@@ -14,7 +14,8 @@ remote pointing at your forge host (default `git.danya02.ru`, configurable).
 Any remote counts -- so a repo can keep a GitHub `origin` and a second remote
 on the forge, and the plugin still works there.
 
-Outside a forge repo the hook is silent and the MCP server does not start. No
+Outside a forge repo the hook is silent and the MCP server offers only a
+`status` tool that explains why the issue tools are inactive. No
 noise, no errors, no wasted calls.
 
 ## Install

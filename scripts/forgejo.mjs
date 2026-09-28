@@ -414,6 +414,18 @@ export function attribution() {
   return `\n\n---\n<sub>Written by Claude with [claude-forgejo-issues](https://github.com/danya02/claude-forgejo-issues)${sessionPart}</sub>`;
 }
 
+// Removes trailing attribution footers (any number: bodies edited before this
+// existed can carry several). edit_issue strips before re-appending, so a body
+// read with get_issue and passed back does not grow a second footer; get_issue
+// strips for display, since the footer is noise to the reader.
+const FOOTER_RE = /(?:\s*\n---\n<sub>Written by Claude with \[claude-forgejo-issues\]\([^)\n]*\)[^\n]*<\/sub>)+\s*$/;
+
+export function stripAttribution(text) {
+  const s = String(text ?? "");
+  const stripped = s.replace(FOOTER_RE, "");
+  return { text: stripped, attributed: stripped !== s };
+}
+
 // One issue, one line: "#12 title [agent-todo, bug]". All labels are shown:
 // in the filtered view the marker label is among them, and in the widened
 // view the extra labels are information.

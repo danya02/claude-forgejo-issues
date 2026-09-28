@@ -1,12 +1,12 @@
 // MCP stdio server: six issue-tracker tools over the Forgejo API.
 //
-// Gate: the server starts only in a repo whose git remotes point at the
-// configured forge host; otherwise it exits 0 before the handshake. What
-// Claude Code shows for a server that exits during startup is an empirical
-// question -- tests/MANUAL.md records what to observe and the fallback
-// design (tools answering "not a forge repo") if tools end up
-// listed-but-failing.
+// Gate: the six tools are offered only in a repo whose git remotes point at
+// the configured forge host. Elsewhere the server still completes the
+// handshake and offers one explanatory tool: measured, a server that exits at
+// startup is shown as "failed" and stays failed until a manual Reconnect,
+// even in a later session that is on the forge.
 
+import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import {
   attribution,
@@ -21,15 +21,31 @@ import {
   renderList,
   resolveLabel,
   resolveTarget,
+  stripAttribution,
 } from "./forgejo.mjs";
 
-// Keep in sync with .claude-plugin/plugin.json.
-const VERSION = "0.2.0";
+const VERSION = (() => {
+  try {
+    return JSON.parse(readFileSync(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version;
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 // The gate. CLAUDE_PROJECT_DIR is the repo Claude Code launched in; the
 // fallback covers bare `node mcp.mjs` runs.
 const TARGET = resolveTarget(process.env.CLAUDE_PROJECT_DIR || process.cwd());
-if (!TARGET) process.exit(0);
+
+// Server-level guidance, placed in the model's context whenever the server is
+// connected: says when to reach for these tools at all, which the per-tool
+// descriptions cannot.
+const INSTRUCTIONS = TARGET
+  ? `This repo keeps its TODOs as issues on ${config.host}/${TARGET.owner}/${TARGET.repo}, ` +
+    `labelled "${config.markerLabel}". Use these tools for work that should outlive the session: ` +
+    `when the user says to note something down, when you find follow-up work you will not do now, ` +
+    `and to record progress (add_comment) and completion (set_issue_state closed, once verified) ` +
+    `on the TODOs you work on. The session-start context lists the open ones.`
+  : `Not active here: no git remote of this repo points at ${config.host}.`;
 
 // A missing token does NOT exit: the handshake still succeeds so the failure
 // lands in the tools as clean, readable errors -- not as a dead server.
@@ -88,6 +104,7 @@ function handleLine(line) {
           protocolVersion: "2025-06-18",
           capabilities: { tools: {} },
           serverInfo: { name: "forgejo-issues", version: VERSION },
+          instructions: INSTRUCTIONS,
         },
       });
       return;
@@ -154,9 +171,37 @@ function stateCountLabel(state) {
   return state === "all" ? "listed" : state;
 }
 
-const TOOLS = [
+const READ_ONLY = { readOnlyHint: true, openWorldHint: true };
+const WRITES = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
+
+// The one tool offered outside a forge repo. Short on purpose: it costs
+// context in every such session, and only has to answer "why are the
+// Forgejo tools missing?".
+const UNAVAILABLE_TOOL = {
+  name: "status",
+  title: "Forgejo Issues status",
+  description:
+    `Forgejo issue tools are inactive in this repo (no git remote on ${config.host}). ` +
+    `Call only if asked why they are unavailable.`,
+  annotations: READ_ONLY,
+  inputSchema: { type: "object", properties: {} },
+};
+
+function unavailableText() {
+  const dir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  return (
+    `The Forgejo issue tools are inactive: no git remote of ${dir} points at ${config.host}. ` +
+    `They activate when one does -- add one (e.g. git remote add forge git@${config.host}:OWNER/REPO.git; ` +
+    `any remote name works) or change "Forge host" in the plugin options (/plugin), ` +
+    `then run /mcp and reconnect this server, or start a new session.`
+  );
+}
+
+const FORGE_TOOLS = [
   {
     name: "list_issues",
+    title: "List TODO issues",
+    annotations: READ_ONLY,
     description:
       `List the TODOs in this repo's Forgejo tracker: one line per issue (number, title, labels). ` +
       `Use when the session-start list is not enough -- before planning work, when the user asks what is open, ` +
@@ -182,6 +227,8 @@ const TOOLS = [
   },
   {
     name: "get_issue",
+    title: "Read an issue",
+    annotations: READ_ONLY,
     description:
       `Read one issue in full: description, labels, state and (by default) its comment thread. ` +
       `Use before editing an issue so the edit lands on current content, and whenever a list line is not enough.`,
@@ -200,6 +247,8 @@ const TOOLS = [
   },
   {
     name: "create_issue",
+    title: "Create a TODO issue",
+    annotations: WRITES,
     description:
       `Create a TODO issue. It is tagged with the "${config.markerLabel}" label automatically ` +
       `(the label is created on first use), and the body gets a short attribution line, ` +
@@ -219,9 +268,12 @@ const TOOLS = [
   },
   {
     name: "edit_issue",
+    title: "Edit an issue",
+    annotations: WRITES,
     description:
       `Edit an existing issue's title, body or state; at least one field is required. ` +
-      `A replacement body also gets the attribution line. For discussion or progress notes prefer add_comment.`,
+      `A replacement body replaces the whole description (read it with get_issue first) and gets the attribution line; ` +
+      `pass the text without a footer -- any existing one is removed. For discussion or progress notes prefer add_comment.`,
     inputSchema: {
       type: "object",
       required: ["number"],
@@ -238,6 +290,8 @@ const TOOLS = [
   },
   {
     name: "add_comment",
+    title: "Comment on an issue",
+    annotations: WRITES,
     description:
       `Add a comment to an issue: progress notes, findings, decisions. ` +
       `The comment gets the attribution line. Lighter than editing: the issue body's history stays intact.`,
@@ -255,6 +309,8 @@ const TOOLS = [
   },
   {
     name: "set_issue_state",
+    title: "Close or reopen an issue",
+    annotations: WRITES,
     description:
       `Close or reopen an issue. Closing is how a TODO is finished: pass state:"closed" ` +
       `once the work is verified (committed, tests green); reopen with state:"open".`,
@@ -273,7 +329,10 @@ const TOOLS = [
   },
 ];
 
+const TOOLS = TARGET ? FORGE_TOOLS : [UNAVAILABLE_TOOL];
+
 async function callTool(name, args) {
+  if (!TARGET) return textResult(unavailableText());
   const token = readToken();
   if (!token) return toolError(missingTokenMessage());
   const client = forgeClient(TARGET, token);
@@ -334,12 +393,14 @@ async function getIssueTool(client, args) {
   const labelNames = Array.isArray(data.labels)
     ? data.labels.map((l) => String(l?.name ?? "")).filter(Boolean)
     : [];
+  // Footers are stripped for display and summarized as "(agent-written)".
+  const body = stripAttribution(data.body);
   const lines = [
-    `#${data.number} ${data.title} (${data.state})`,
+    `#${data.number} ${data.title} (${data.state})${body.attributed ? " (agent-written)" : ""}`,
     `Labels: ${labelNames.length > 0 ? labelNames.join(", ") : "(none)"}`,
     `URL: ${data.html_url ?? ""}`,
     "",
-    typeof data.body === "string" && data.body !== "" ? data.body : "(no description)",
+    body.text !== "" ? body.text : "(no description)",
   ];
   let tail = "";
   if (args.include_comments !== false) {
@@ -350,7 +411,11 @@ async function getIssueTool(client, args) {
       tail = `\n\n(Comments unavailable: ${cErr})`;
     } else if (items.length > 0) {
       tail = `\n\n## Comments\n${items
-        .map((c) => `**${c.user?.login ?? "unknown"}** (${c.created_at ?? "unknown date"}):\n${c.body ?? ""}`)
+        .map((c) => {
+          const cb = stripAttribution(c.body);
+          const who = `${c.user?.login ?? "unknown"}${cb.attributed ? ", agent-written" : ""}`;
+          return `**${who}** (${c.created_at ?? "unknown date"}):\n${cb.text}`;
+        })
         .join("\n\n")}`;
     }
   }
@@ -398,7 +463,7 @@ async function editIssueTool(client, args) {
     changed.push("title");
   }
   if (typeof args.body === "string") {
-    patch.body = args.body + attribution();
+    patch.body = stripAttribution(args.body).text + attribution();
     changed.push("body");
   }
   if (args.state !== undefined) {

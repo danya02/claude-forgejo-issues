@@ -1,7 +1,7 @@
 {
   "name": "forgejo-issues",
   "displayName": "Forgejo Issues",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Turns a Forgejo repo's issue tracker into a TODO store the agent can see and edit: open TODOs injected as context, tools to list, read, create, edit, comment and close.",
   "keywords": [
     "forgejo",
@@ -37,25 +37,25 @@
     "inject_on_prompt": {
       "type": "boolean",
       "title": "Refresh the TODO list on every prompt",
-      "description": "Re-check the issue list on every prompt, not just at session start. When nothing moved since the last injection, one short line is emitted instead of the full block.",
+      "description": "Re-check the issue list on every prompt, not just at session start. When nothing moved since the last injection, one short line is emitted instead of the full block. Type true or false.",
       "default": false
     },
     "attribution": {
       "type": "boolean",
       "title": "Attribute created content",
-      "description": "Append a 'Written by Claude with claude-forgejo-issues' note to issues and comments the tools create, so agent-authored content is distinguishable from yours.",
+      "description": "Append a 'Written by Claude with claude-forgejo-issues' note to issues and comments the tools create, so agent-authored content is distinguishable from yours. Type true or false.",
       "default": true
     },
     "attribution_session": {
       "type": "boolean",
       "title": "Reference the session id",
-      "description": "Include the Claude Code session id in the attribution line, so an issue or comment can be traced back to the session that produced it.",
+      "description": "Include the Claude Code session id in the attribution line, so an issue or comment can be traced back to the session that produced it. Type true or false.",
       "default": true
     },
     "request_timeout_seconds": {
       "type": "number",
       "title": "Request timeout (seconds)",
-      "description": "How long a request to the forge may take before it is abandoned.",
+      "description": "How long a request to the forge may take before it is abandoned. A whole number from 1 to 30.",
       "default": 5,
       "min": 1,
       "max": 30
@@ -63,7 +63,7 @@
     "debug_log": {
       "type": "boolean",
       "title": "Log errors",
-      "description": "Append internal errors to errors.ndjson in the plugin data directory. The hook and tools stay functional either way.",
+      "description": "Append internal errors to errors.ndjson in the plugin data directory. The hook and tools stay functional either way. Type true or false.",
       "default": false
     }
   }
