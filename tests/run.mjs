@@ -721,6 +721,14 @@ await test("mcp: list_issues default view filters by label id", async () => {
   ]);
 });
 
+await test("mcp: list_issues query passes q= (quotes stripped) alongside the label id", async () => {
+  routes = defaultRoutes();
+  requests = [];
+  const res = await m.call({ method: "tools/call", params: { name: "list_issues", arguments: { query: '"maze map"', state: "all" } } });
+  includes(res.result.content[0].text, 'listed matching "\\"maze map\\""');
+  eq(requests[1], "GET /api/v1/repos/danya/ci-demo/issues?state=all&type=issues&labels=2&q=maze%20map&page=1&limit=50");
+});
+
 await test("mcp: list_issues all:true skips label resolution", async () => {
   routes = [{ method: "GET", re: /\/issues\?/, handler: () => ({ body: [ISSUE_A, ISSUE_B] }) }];
   requests = [];

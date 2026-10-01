@@ -168,3 +168,12 @@ plus display-only labels. It does not manage labels, milestones, pulls,
 releases, or wiki. If a request would grow it beyond issues + comments, the
 right move is to discuss renaming or splitting the plugin rather than letting
 it accrete -- its whole value is being small enough to hold in one head.
+
+## Search is q=, measured
+
+Measured on agx_navigation (27 open issues, Forgejo 16.0.5): `q=` searches
+titles and bodies and matches ANY of the words ("nav2 tuning" returned 11
+issues, "tuning" alone 6). A quoted phrase matches nothing, so quotes are
+stripped. `q=` combines with the label-id filter as expected; note that with
+`q=` even a bogus label id was silently ignored, so the label-id rule above
+matters here too.

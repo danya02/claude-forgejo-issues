@@ -207,10 +207,15 @@ const FORGE_TOOLS = [
       `Use when the session-start list is not enough -- before planning work, when the user asks what is open, ` +
       `or to re-check after edits. Default view: open issues carrying the "${config.markerLabel}" label ` +
       `(this plugin's marker for agent TODOs). Pass all:true to widen to every issue in the repo, ` +
-      `or state:"closed"/"all" to change the state filter.`,
+      `or state:"closed"/"all" to change the state filter. ` +
+      `Before create_issue, search with query (state:"all") for an existing issue on the topic.`,
     inputSchema: {
       type: "object",
       properties: {
+        query: {
+          type: "string",
+          description: "Keywords searched in titles and bodies; matches any word, so prefer one or two distinctive ones.",
+        },
         state: {
           type: "string",
           enum: ["open", "closed", "all"],
@@ -366,7 +371,8 @@ async function listIssuesTool(client, args) {
   if (state !== "open" && state !== "closed" && state !== "all") {
     return toolError(`state must be "open", "closed" or "all", got ${JSON.stringify(state)}`);
   }
-  const countLabel = stateCountLabel(state);
+  const query = typeof args.query === "string" && args.query.trim() !== "" ? args.query : null;
+  const countLabel = query === null ? stateCountLabel(state) : `${stateCountLabel(state)} matching ${JSON.stringify(query)}`;
   if (args.all !== true) {
     const label = await resolveLabel(client, config.markerLabel);
     if (label.error) return toolError(label.error);
@@ -379,11 +385,11 @@ async function listIssuesTool(client, args) {
         `${renderList(TARGET, [], countLabel)}\n(The "${config.markerLabel}" label does not exist yet; it is created automatically on first create_issue.)`
       );
     }
-    const { items, error } = await listIssues(client, { state, labelId: label.id });
+    const { items, error } = await listIssues(client, { state, labelId: label.id, query });
     if (error) return toolError(error);
     return textResult(renderList(TARGET, items, countLabel));
   }
-  const { items, error } = await listIssues(client, { state, labelId: null });
+  const { items, error } = await listIssues(client, { state, labelId: null, query });
   if (error) return toolError(error);
   return textResult(renderList(TARGET, items, countLabel));
 }

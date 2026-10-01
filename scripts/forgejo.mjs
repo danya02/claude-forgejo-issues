@@ -373,10 +373,14 @@ export async function resolveLabel(client, name) {
 // State-filtered issues, optionally narrowed to a label id. Callers MUST
 // pass a labelId obtained from resolveLabel when filtering -- name-based
 // filtering is unsafe (header rules).
-export async function listIssues(client, { state = "open", labelId = null } = {}) {
+// query is Forgejo's q= keyword search over titles and bodies (measured:
+// any-word match; quoted phrases match nothing, so quotes are stripped).
+export async function listIssues(client, { state = "open", labelId = null, query = null } = {}) {
   const stateParam = state === "all" ? "all" : state;
   const labelParam = labelId === null ? "" : `&labels=${encodeURIComponent(String(labelId))}`;
-  return await paginate(client, `/issues?state=${encodeURIComponent(stateParam)}&type=issues${labelParam}`);
+  const q = query === null ? "" : query.replace(/"/g, " ").trim();
+  const queryParam = q === "" ? "" : `&q=${encodeURIComponent(q)}`;
+  return await paginate(client, `/issues?state=${encodeURIComponent(stateParam)}&type=issues${labelParam}${queryParam}`);
 }
 
 // Creates the marker label. Best-effort by design: two sessions racing to
