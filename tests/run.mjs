@@ -899,6 +899,28 @@ await test("mcp: add_comment and set_issue_state", async () => {
   const st = await m.call({ method: "tools/call", params: { name: "set_issue_state", arguments: { number: 4, state: "open" } } });
   includes(st.result.content[0].text, "Reopened #4");
   eq(patch, { state: "open" });
+  commentBody = null;
+  const withC = await m.call({ method: "tools/call", params: { name: "set_issue_state", arguments: { number: 4, state: "closed", comment: "Done in abc123." } } });
+  includes(withC.result.content[0].text, "Closed #4");
+  includes(commentBody.body, "Done in abc123.");
+  eq(requests.slice(-2).map((r) => r.split(" ")[0]), ["POST", "PATCH"], "comment before state");
+});
+
+await test("mcp: set_issue_state reports which arm failed", async () => {
+  let patched = false;
+  routes = [
+    { method: "POST", re: /\/issues\/4\/comments/, handler: () => ({ status: 500, body: { message: "boom" } }) },
+    { method: "PATCH", re: /\/issues\/4$/, handler: () => ((patched = true), { status: 201, body: { number: 4, title: "T" } }) },
+  ];
+  const a = await m.call({ method: "tools/call", params: { name: "set_issue_state", arguments: { number: 4, state: "closed", comment: "x" } } });
+  includes(a.result.content[0].text, "Comment failed, state not changed");
+  eq(patched, false);
+  routes = [
+    { method: "POST", re: /\/issues\/4\/comments/, handler: () => ({ status: 201, body: { id: 1 } }) },
+    { method: "PATCH", re: /\/issues\/4$/, handler: () => ({ status: 500, body: { message: "boom" } }) },
+  ];
+  const b = await m.call({ method: "tools/call", params: { name: "set_issue_state", arguments: { number: 4, state: "closed", comment: "x" } } });
+  includes(b.result.content[0].text, "Comment posted, but the state change failed");
 });
 
 await test("mcp: unknown tool -32602, unknown method -32601, bad JSON -32700, notifications silent", async () => {

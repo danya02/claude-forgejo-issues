@@ -318,7 +318,7 @@ const FORGE_TOOLS = [
     annotations: WRITES,
     description:
       `Close or reopen an issue. Closing is how a TODO is finished: pass state:"closed" ` +
-      `once the work is verified (committed, tests green); reopen with state:"open".`,
+      `once the work is verified (committed, tests green), with a comment saying how; reopen with state:"open".`,
     inputSchema: {
       type: "object",
       required: ["number", "state"],
@@ -328,6 +328,10 @@ const FORGE_TOOLS = [
           type: "string",
           enum: ["open", "closed"],
           description: `"closed" when the TODO is done, "open" to reopen.`,
+        },
+        comment: {
+          type: "string",
+          description: "Optional comment posted first, e.g. the evidence: commit, result.",
         },
       },
     },
@@ -537,13 +541,25 @@ async function setIssueStateTool(client, args) {
   if (args.state !== "open" && args.state !== "closed") {
     return toolError(`state must be "open" or "closed", got ${JSON.stringify(args.state ?? null)}`);
   }
+  // No atomic comment+state endpoint: comment first, so a failure leaves the
+  // state untouched, and a later state failure says the comment already landed.
+  const comment = typeof args.comment === "string" && args.comment.trim() !== "" ? args.comment : null;
+  if (comment !== null) {
+    const res = await client.call("POST", `/issues/${n}/comments`, { body: comment + attribution() });
+    if (res.error) {
+      return toolError(
+        res.status === 404
+          ? `Issue #${n} does not exist on ${config.host}/${TARGET.owner}/${TARGET.repo}.`
+          : `Comment failed, state not changed: ${res.error}`
+      );
+    }
+  }
   const { status, data, error } = await client.call("PATCH", `/issues/${n}`, { state: args.state });
   if (error) {
-    return toolError(
-      status === 404
-        ? `Issue #${n} does not exist on ${config.host}/${TARGET.owner}/${TARGET.repo}.`
-        : error
-    );
+    const msg = status === 404 ? `Issue #${n} does not exist on ${config.host}/${TARGET.owner}/${TARGET.repo}.` : error;
+    return toolError(comment === null ? msg : `Comment posted, but the state change failed (retry without comment): ${msg}`);
   }
-  return textResult(`${args.state === "closed" ? "Closed" : "Reopened"} #${data.number}: ${data.title}`);
+  return textResult(
+    `${args.state === "closed" ? "Closed" : "Reopened"} #${data.number}: ${data.title}${comment === null ? "" : " (with comment)"}`
+  );
 }
