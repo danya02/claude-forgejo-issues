@@ -1,7 +1,7 @@
 {
   "name": "forgejo-issues",
   "displayName": "Forgejo Issues",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Turns a Forgejo repo's issue tracker into a TODO store the agent can see and edit: open TODOs injected as context, tools to list, read, create, edit, comment and close.",
   "keywords": [
     "forgejo",
