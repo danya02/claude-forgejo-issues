@@ -387,11 +387,11 @@ async function listIssuesTool(client, args) {
     }
     const { items, error } = await listIssues(client, { state, labelId: label.id, query });
     if (error) return toolError(error);
-    return textResult(renderList(TARGET, items, countLabel));
+    return textResult(renderList(TARGET, items, countLabel, query));
   }
   const { items, error } = await listIssues(client, { state, labelId: null, query });
   if (error) return toolError(error);
-  return textResult(renderList(TARGET, items, countLabel));
+  return textResult(renderList(TARGET, items, countLabel, query));
 }
 
 async function getIssueTool(client, args) {

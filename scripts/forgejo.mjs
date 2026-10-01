@@ -443,10 +443,30 @@ export function describeIssue(issue) {
 
 // The injected/returned list. countLabel tracks the filter: "open" by
 // default, "closed"/"listed" for the other states.
-export function renderList(target, issues, countLabel = "open") {
+export function renderList(target, issues, countLabel = "open", query = null) {
   const where = `${config.host}/${target.owner}/${target.repo}`;
   if (issues.length === 0) return `Forgejo TODOs on ${where} -- none ${countLabel}.`;
-  return `Forgejo TODOs on ${where} -- ${issues.length} ${countLabel}:\n${issues.map(describeIssue).join("\n")}`;
+  const line = (i) => {
+    const s = query === null ? null : searchSnippet(i, query);
+    return s === null ? describeIssue(i) : `${describeIssue(i)}\n    ${s}`;
+  };
+  return `Forgejo TODOs on ${where} -- ${issues.length} ${countLabel}:\n${issues.map(line).join("\n")}`;
+}
+
+// Forgejo returns no highlights, so a search hit whose title lacks every
+// query word gets a short body excerpt around the first word found, showing
+// why it matched. A title hit already explains itself: no excerpt.
+export function searchSnippet(issue, query, width = 100) {
+  const words = query.toLowerCase().replace(/"/g, " ").split(/\s+/).filter(Boolean);
+  const title = String(issue.title ?? "").toLowerCase();
+  if (words.length === 0 || words.some((w) => title.includes(w))) return null;
+  const body = stripAttribution(issue.body).text.replace(/\s+/g, " ");
+  const lower = body.toLowerCase();
+  const at = Math.min(...words.map((w) => lower.indexOf(w)).filter((i) => i >= 0));
+  if (!Number.isFinite(at)) return null; // matched in a comment or by stemming
+  const start = Math.max(0, at - Math.floor(width / 3));
+  const end = Math.min(body.length, start + width);
+  return `${start > 0 ? "…" : ""}${body.slice(start, end).trim()}${end < body.length ? "…" : ""}`;
 }
 
 // ---------------------------------------------------------------------------

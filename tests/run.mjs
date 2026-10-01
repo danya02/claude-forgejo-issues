@@ -729,6 +729,15 @@ await test("mcp: list_issues query passes q= (quotes stripped) alongside the lab
   eq(requests[1], "GET /api/v1/repos/danya/ci-demo/issues?state=all&type=issues&labels=2&q=maze%20map&page=1&limit=50");
 });
 
+await test("searchSnippet: body excerpt only when the title does not explain the hit", () => {
+  const body = `${"x ".repeat(80)}we rejected the maze idea here ${"y ".repeat(80)}`;
+  const s = forgejo.searchSnippet({ title: "Figures", body }, "maze");
+  includes(s, "rejected the maze idea");
+  ok(s.startsWith("…") && s.endsWith("…"), "ellipses on both cut ends");
+  eq(forgejo.searchSnippet({ title: "Maze figure", body }, "maze"), null);
+  eq(forgejo.searchSnippet({ title: "T", body: "nothing" }, "maze"), null);
+});
+
 await test("mcp: list_issues all:true skips label resolution", async () => {
   routes = [{ method: "GET", re: /\/issues\?/, handler: () => ({ body: [ISSUE_A, ISSUE_B] }) }];
   requests = [];
