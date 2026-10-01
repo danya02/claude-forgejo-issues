@@ -451,6 +451,7 @@ await test("hook SessionStart: full TODO block on a forge repo", async () => {
   includes(hookContext(r), "#4 Fix CI on main [agent-todo]");
   includes(hookContext(r), "#7 Add caching [agent-todo]");
   includes(hookUserMessage(r), "injected 2 open TODOs");
+  ok(/\(Snapshot taken \d{4}-\d\d-\d\d \d\d:\d\d[+-]\d\d:\d\d; call list_issues/.test(hookContext(r)), "snapshot stamp");
   // The measured trap demands this exact order and the id-based filter:
   eq(requests, [
     "GET /api/v1/repos/danya/ci-demo/labels?limit=50&page=1",

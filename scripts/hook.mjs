@@ -115,12 +115,24 @@ async function main() {
     return;
   }
 
+  // Stamped after hashing, so the time alone never counts as a change.
+  const snapshot = `${text}\n${snapshotNote()}`;
   emit(
     event,
-    event === "SessionStart" ? `${text}\n${USAGE}` : text,
+    event === "SessionStart" ? `${snapshot}\n${USAGE}` : snapshot,
     `forgejo-issues: injected ${items.length} open TODO${items.length === 1 ? "" : "s"} from ${target.owner}/${target.repo}`
   );
   if (sessionId !== null) writeSessionState(sessionId, { hash, count: items.length });
+}
+
+// The list goes stale as soon as anyone writes to the tracker; say when it
+// was taken, in local time with the offset so it compares to the clock.
+function snapshotNote(now = new Date()) {
+  const p = (x) => String(x).padStart(2, "0");
+  const off = -now.getTimezoneOffset();
+  const tz = `${off < 0 ? "-" : "+"}${p(Math.floor(Math.abs(off) / 60))}:${p(Math.abs(off) % 60)}`;
+  const stamp = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}${tz}`;
+  return `(Snapshot taken ${stamp}; call list_issues for the current state.)`;
 }
 
 // A distinct error reports once per session: identical text stays silent on
