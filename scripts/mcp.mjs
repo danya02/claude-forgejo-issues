@@ -508,7 +508,8 @@ async function editIssueTool(client, args) {
         : error
     );
   }
-  return textResult(`Updated #${data.number}: ${data.title} (${changed.join(", ")})`);
+  const size = typeof patch.body === "string" ? `; body now ${stripAttribution(patch.body).text.length} chars` : "";
+  return textResult(`Updated #${data.number}: ${data.title} (${changed.join(", ")}${size})`);
 }
 
 async function addCommentTool(client, args) {

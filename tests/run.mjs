@@ -864,6 +864,7 @@ await test("mcp: edit_issue append reads, appends before the footer, patches", a
   const res = await m.call({ method: "tools/call", params: { name: "edit_issue", arguments: { number: 4, append: "## Update\nMore." } } });
   includes(res.result.content[0].text, "Updated #4");
   eq(order, ["GET", "PATCH"]);
+  includes(res.result.content[0].text, "body now 31 chars");
   includes(patch.body, "Original text.\n\n## Update\nMore.");
   eq(patch.body.match(/Written by Claude with/g)?.length, 1, "single footer, at the end");
   const both = await m.call({ method: "tools/call", params: { name: "edit_issue", arguments: { number: 4, body: "x", append: "y" } } });
