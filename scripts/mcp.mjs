@@ -251,7 +251,7 @@ const FORGE_TOOLS = [
     annotations: WRITES,
     description:
       `Create a TODO issue. It is tagged with the "${config.markerLabel}" label automatically ` +
-      `(the label is created on first use), and the body gets a short attribution line, ` +
+      `(the label is created on first use), and the body gets a short attribution line (don't sign it yourself), ` +
       `so agent TODOs are distinguishable from the user's own issues. ` +
       `Use for every "note this down" / "TODO" request in this repo; keep titles short and imperative.`,
     inputSchema: {
@@ -299,7 +299,7 @@ const FORGE_TOOLS = [
     annotations: WRITES,
     description:
       `Add a comment to an issue: progress notes, findings, decisions. ` +
-      `The comment gets the attribution line. Lighter than editing: the issue body's history stays intact.`,
+      `The comment gets the attribution line (don't sign it yourself). Lighter than editing: the issue body's history stays intact.`,
     inputSchema: {
       type: "object",
       required: ["number", "body"],
