@@ -273,7 +273,8 @@ const FORGE_TOOLS = [
     description:
       `Edit an existing issue's title, body or state; at least one field is required. ` +
       `A replacement body replaces the whole description (read it with get_issue first) and gets the attribution line; ` +
-      `pass the text without a footer -- any existing one is removed. For discussion or progress notes prefer add_comment.`,
+      `pass the text without a footer -- any existing one is removed. Use append instead of body to add to the end without resending it. ` +
+      `For discussion or progress notes prefer add_comment.`,
     inputSchema: {
       type: "object",
       required: ["number"],
@@ -283,6 +284,10 @@ const FORGE_TOOLS = [
         body: {
           type: "string",
           description: "Replacement body in Markdown; the attribution line is appended.",
+        },
+        append: {
+          type: "string",
+          description: "Markdown added after the current body (exclusive with body).",
         },
         state: { type: "string", enum: ["open", "closed"] },
       },
@@ -462,9 +467,28 @@ async function editIssueTool(client, args) {
     patch.title = args.title;
     changed.push("title");
   }
+  if (typeof args.body === "string" && typeof args.append === "string") {
+    return toolError("Pass either body (replace) or append, not both.");
+  }
   if (typeof args.body === "string") {
     patch.body = stripAttribution(args.body).text + attribution();
     changed.push("body");
+  }
+  if (typeof args.append === "string" && args.append.trim() !== "") {
+    // Forgejo has no append endpoint: read-modify-write here, which narrows
+    // the stale-read window to one round-trip instead of a whole agent turn.
+    const cur = await client.call("GET", `/issues/${n}`);
+    if (cur.error) {
+      return toolError(
+        cur.status === 404
+          ? `Issue #${n} does not exist on ${config.host}/${TARGET.owner}/${TARGET.repo}.`
+          : cur.error
+      );
+    }
+    const existing = stripAttribution(cur.data?.body).text.replace(/\s+$/, "");
+    const added = stripAttribution(args.append).text.replace(/^\s+/, "");
+    patch.body = (existing === "" ? added : `${existing}\n\n${added}`) + attribution();
+    changed.push("body (appended)");
   }
   if (args.state !== undefined) {
     if (args.state !== "open" && args.state !== "closed") {
@@ -474,7 +498,7 @@ async function editIssueTool(client, args) {
     changed.push("state");
   }
   if (changed.length === 0) {
-    return toolError("Nothing to update: pass at least one of title, body, state.");
+    return toolError("Nothing to update: pass at least one of title, body, append, state.");
   }
   const { status, data, error } = await client.call("PATCH", `/issues/${n}`, patch);
   if (error) {

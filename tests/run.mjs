@@ -838,6 +838,38 @@ await test("mcp: edit_issue patches only given fields and validates", async () =
   includes(bad.result.content[0].text, 'state must be "open" or "closed"');
 });
 
+await test("mcp: edit_issue append reads, appends before the footer, patches", async () => {
+  const { attribution } = await freshImport("forgejo.mjs");
+  const order = [];
+  let patch = null;
+  routes = [
+    {
+      method: "GET",
+      re: /\/issues\/4$/,
+      handler: () => {
+        order.push("GET");
+        return { body: { number: 4, title: "T", body: `Original text.\n${attribution()}` } };
+      },
+    },
+    {
+      method: "PATCH",
+      re: /\/issues\/4$/,
+      handler: (b) => {
+        order.push("PATCH");
+        patch = JSON.parse(b);
+        return { status: 201, body: { number: 4, title: "T" } };
+      },
+    },
+  ];
+  const res = await m.call({ method: "tools/call", params: { name: "edit_issue", arguments: { number: 4, append: "## Update\nMore." } } });
+  includes(res.result.content[0].text, "Updated #4");
+  eq(order, ["GET", "PATCH"]);
+  includes(patch.body, "Original text.\n\n## Update\nMore.");
+  eq(patch.body.match(/Written by Claude with/g)?.length, 1, "single footer, at the end");
+  const both = await m.call({ method: "tools/call", params: { name: "edit_issue", arguments: { number: 4, body: "x", append: "y" } } });
+  eq(both.result.isError, true);
+});
+
 await test("mcp: add_comment and set_issue_state", async () => {
   let commentBody = null;
   let patch = null;
