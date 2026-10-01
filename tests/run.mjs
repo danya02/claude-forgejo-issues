@@ -831,6 +831,34 @@ await test("mcp: create_issue creates an absent marker label (and survives a 422
   eq(issueBody.labels, [5], "re-resolved id used");
 });
 
+await test("mcp: create_issue related links both ways, reports a failed back-link", async () => {
+  let issueBody = null;
+  let backBody = null;
+  let backStatus = 201;
+  routes = [
+    ...defaultRoutes(),
+    {
+      method: "POST",
+      re: /\/issues$/,
+      handler: (b) => ((issueBody = JSON.parse(b)), { status: 201, body: { number: 22, title: "Maze figure", html_url: "u/22" } }),
+    },
+    {
+      method: "POST",
+      re: /\/issues\/21\/comments$/,
+      handler: (b) => ((backBody = JSON.parse(b)), { status: backStatus, body: backStatus === 201 ? { id: 1 } : { message: "boom" } }),
+    },
+  ];
+  const ok1 = await m.call({ method: "tools/call", params: { name: "create_issue", arguments: { title: "Maze figure", body: "Text.", related: 21 } } });
+  includes(issueBody.body, "Text.\n\nRelated: #21");
+  includes(backBody.body, "Related: #22");
+  includes(ok1.result.content[0].text, "Linked with #21 both ways");
+  backStatus = 500;
+  const bad = await m.call({ method: "tools/call", params: { name: "create_issue", arguments: { title: "Maze figure", related: 21 } } });
+  eq(bad.result.isError, undefined, "the issue exists, so not an error");
+  includes(bad.result.content[0].text, "Created #22");
+  includes(bad.result.content[0].text, "back-link comment on #21 failed");
+});
+
 await test("mcp: edit_issue patches only given fields and validates", async () => {
   let patch = null;
   routes = [

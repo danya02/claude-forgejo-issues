@@ -268,6 +268,10 @@ const FORGE_TOOLS = [
           type: "string",
           description: "Full description in Markdown; the attribution line is appended.",
         },
+        related: {
+          type: "integer",
+          description: "Existing issue this one relates to or supersedes; both get a cross-reference.",
+        },
       },
     },
   },
@@ -440,7 +444,15 @@ async function getIssueTool(client, args) {
 async function createIssueTool(client, args) {
   const title = typeof args.title === "string" ? args.title.trim() : "";
   if (title === "") return toolError("title is required");
-  const body = typeof args.body === "string" ? args.body : "";
+  let body = typeof args.body === "string" ? args.body : "";
+  const related = args.related === undefined ? null : toNumber(args.related);
+  if (args.related !== undefined && related === null) {
+    return toolError("related must be a positive integer issue number");
+  }
+  // The forward link rides in the new body (Forgejo renders #N as a
+  // reference); the back-link is a separate comment. No atomic pair exists,
+  // so each arm's outcome is reported on its own.
+  if (related !== null) body = `${body.replace(/\s+$/, "")}${body.trim() === "" ? "" : "\n\n"}Related: #${related}`;
 
   // Marker label: resolve; create when absent; re-resolve afterwards in case
   // another session raced us (422 just means the other one won).
@@ -465,7 +477,18 @@ async function createIssueTool(client, args) {
   if (!res.data || typeof res.data.number !== "number") {
     return toolError(`Unexpected response creating the issue (HTTP ${res.status}).`);
   }
-  return textResult(`Created #${res.data.number}: ${res.data.title}\n${res.data.html_url ?? ""}`);
+  const created = `Created #${res.data.number}: ${res.data.title}\n${res.data.html_url ?? ""}`;
+  if (related === null) return textResult(created);
+  const back = await client.call("POST", `/issues/${related}/comments`, {
+    body: `Related: #${res.data.number}${attribution()}`,
+  });
+  if (back.error) {
+    return textResult(
+      `${created}\nForward link to #${related} is in the body, but the back-link comment on #${related} failed ` +
+        `(retry with add_comment): ${back.error}`
+    );
+  }
+  return textResult(`${created}\nLinked with #${related} both ways.`);
 }
 
 async function editIssueTool(client, args) {
