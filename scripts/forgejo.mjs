@@ -463,7 +463,7 @@ export function searchSnippet(issue, query, width = 100) {
   const body = stripAttribution(issue.body).text.replace(/\s+/g, " ");
   const lower = body.toLowerCase();
   const at = Math.min(...words.map((w) => lower.indexOf(w)).filter((i) => i >= 0));
-  if (!Number.isFinite(at)) return null; // matched in a comment or by stemming
+  if (!Number.isFinite(at)) return "(no match in title or body; likely in a comment -- get_issue to read it)";
   const start = Math.max(0, at - Math.floor(width / 3));
   const end = Math.min(body.length, start + width);
   return `${start > 0 ? "…" : ""}${body.slice(start, end).trim()}${end < body.length ? "…" : ""}`;

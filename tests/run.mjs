@@ -735,7 +735,7 @@ await test("searchSnippet: body excerpt only when the title does not explain the
   includes(s, "rejected the maze idea");
   ok(s.startsWith("…") && s.endsWith("…"), "ellipses on both cut ends");
   eq(forgejo.searchSnippet({ title: "Maze figure", body }, "maze"), null);
-  eq(forgejo.searchSnippet({ title: "T", body: "nothing" }, "maze"), null);
+  includes(forgejo.searchSnippet({ title: "T", body: "nothing" }, "maze"), "likely in a comment");
 });
 
 await test("mcp: list_issues all:true skips label resolution", async () => {
