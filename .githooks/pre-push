@@ -1,0 +1,29 @@
+#!/bin/sh
+# Rejects a push that changes shipped plugin files without bumping "version"
+# in .claude-plugin/plugin.json: Claude Code only picks up a plugin update
+# when the version goes up. Docs (*.md) and tests/ don't ship, so they are
+# exempt. Override with `git push --no-verify`.
+# Enable once per clone: git config core.hooksPath .githooks
+
+zero=0000000000000000000000000000000000000000
+version_at() {
+  git show "$1:.claude-plugin/plugin.json" 2>/dev/null | sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p'
+}
+
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue   # branch deletion
+  [ "$remote_sha" = "$zero" ] && continue  # new branch: nothing to compare against
+  git cat-file -e "$remote_sha" 2>/dev/null || continue  # remote tip not fetched locally
+  shipped=$(git diff --name-only "$remote_sha" "$local_sha" -- . ':!tests/' ':!*.md' ':!feedback/')
+  [ -z "$shipped" ] && continue
+  old=$(version_at "$remote_sha")
+  new=$(version_at "$local_sha")
+  if [ "$old" = "$new" ]; then
+    echo "pre-push: $remote_ref changes shipped files but plugin.json version is still $old:" >&2
+    echo "$shipped" | sed 's/^/  /' >&2
+    echo "Bump \"version\" in .claude-plugin/plugin.json, or push with --no-verify." >&2
+    status=1
+  fi
+done
+exit $status
