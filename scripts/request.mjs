@@ -119,8 +119,12 @@ function proxiedPlainRequest(url, proxy, method, headers, body, timeoutMs, descr
 // the proxy sees only host:port, the payload stays opaque to it. The TLS
 // layer is opened by httpsRequest over the tunnelled socket, with servername
 // set so SNI still names the target host rather than the proxy.
+// The tunnel is one-shot and belongs to no agent, so nothing would ever close
+// it: the server holds the keep-alive connection open and the ref'd socket
+// keeps the process alive -- a hook then runs into its timeout and its output
+// is discarded. Destroyed once the exchange settles, either way.
 function tunnelledRequest(url, proxy, method, headers, body, timeoutMs, describe) {
-  return openTunnel(url, proxy, timeoutMs).then((socket) => {
+  return openTunnel(url, proxy, timeoutMs, describe).then((socket) => {
     const req = httpsRequest({
       method,
       headers,
@@ -131,11 +135,11 @@ function tunnelledRequest(url, proxy, method, headers, body, timeoutMs, describe
       agent: false,
       createConnection: () => socket,
     });
-    return collect(req, body, timeoutMs, describe);
+    return collect(req, body, timeoutMs, describe).finally(() => socket.destroy());
   });
 }
 
-async function openTunnel(url, proxy, timeoutMs) {
+async function openTunnel(url, proxy, timeoutMs, describe) {
   const port = Number(url.port) || 443;
   const target = `${url.hostname}:${port}`;
   return await new Promise((resolve, reject) => {
