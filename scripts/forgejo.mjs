@@ -74,7 +74,7 @@ function readConfigFile() {
   }
 }
 
-// Claude Code substitutes ${user_config.<key>} into .mcp.json env values;
+// Claude Code substitutes ${user_config.<key>} into the plugin.json mcpServers env values;
 // when an option was never configured, what arrives can be the literal
 // placeholder text, which counts as unset. Whole-value match: a real value
 // that merely contains that substring is never discarded. What an unset

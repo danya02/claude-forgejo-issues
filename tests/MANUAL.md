@@ -115,7 +115,7 @@ Open `/plugin`, press Enter on Forgejo Issues, choose **Configure options**:
   repo confirm BOTH the hook (injection line / TODO list) and the tools
   (`create_issue` tags with the new label) use it -- this proves settings
   reach both processes. The docs only guarantee hooks receive option env
-  vars; the `.mcp.json` env map is what carries them to the MCP server, and
+  vars; the `mcpServers` env map in `plugin.json` is what carries them to the MCP server, and
   this check proves it end to end.
 - Set the token via the dialog, temporarily move the token file away, and
   confirm session-start injection and `list_issues` still work -- proves the

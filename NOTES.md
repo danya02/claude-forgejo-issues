@@ -152,7 +152,7 @@ stays three sources.
 One asymmetry is load-bearing: `CLAUDE_PLUGIN_OPTION_*` env vars are
 documented for hook processes only. MCP stdio servers receive settings only
 via `${user_config.<key>}` substitution in the server's `env` map, so
-`.mcp.json` maps every option to its `CLAUDE_PLUGIN_OPTION_*` name
+the `mcpServers` entry in `plugin.json` maps every option to its `CLAUDE_PLUGIN_OPTION_*` name
 explicitly. Before that map existed, the tools silently ran on defaults no
 matter what was configured -- the hook honored settings, the MCP server did
 not. What an unset option substitutes to is undocumented (empty string,

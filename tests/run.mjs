@@ -309,9 +309,9 @@ await test("missingTokenMessage names the path, the URL and every storage choice
   includes(msg, "CLAUDE_FORGEJO_ISSUES_TOKEN");
 });
 
-await test("plugin.json userConfig and .mcp.json env map stay in sync", () => {
+await test("plugin.json userConfig and MCP env map stay in sync", () => {
   const manifest = JSON.parse(readFileSync(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8"));
-  const mcpJson = JSON.parse(readFileSync(new URL("../.mcp.json", import.meta.url), "utf8"));
+  const mcpJson = manifest; // mcpServers is inline in plugin.json
   const env = mcpJson.mcpServers.fj.env ?? {};
   const keys = Object.keys(manifest.userConfig);
   eq(keys.length, Object.keys(env).length, "exactly one env entry per userConfig key");
