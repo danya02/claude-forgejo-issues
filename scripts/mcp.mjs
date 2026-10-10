@@ -13,6 +13,7 @@ import {
   config,
   createMarkerLabel,
   forgeClient,
+  latestComments,
   listIssues,
   logError,
   missingTokenMessage,
@@ -308,7 +309,10 @@ const FORGE_TOOLS = [
     annotations: WRITES,
     description:
       `Add a comment to an issue: progress notes, findings, decisions. ` +
-      `The comment gets the attribution line (don't sign it yourself). Lighter than editing: the issue body's history stays intact.`,
+      `The comment gets the attribution line (don't sign it yourself). Lighter than editing: the issue body's history stays intact. ` +
+      `If the comment changes what the issue means -- it invalidates an earlier result, records a decision that changes the scope, ` +
+      `reports the work done, or leaves it blocked or waiting on someone -- also update the issue itself with edit_issue ` +
+      `(the title, or a "Status:" line at the top of the body), because lists show titles and a later session acts on them.`,
     inputSchema: {
       type: "object",
       required: ["number", "body"],
@@ -327,7 +331,10 @@ const FORGE_TOOLS = [
     annotations: WRITES,
     description:
       `Close or reopen an issue. Closing is how a TODO is finished: pass state:"closed" ` +
-      `once the work is verified (committed, tests green), with a comment saying how; reopen with state:"open".`,
+      `once the work is verified (committed, tests green), with a comment saying how; reopen with state:"open". ` +
+      `Before closing, check the thread for two things that would otherwise be lost, since closed issues drop out of the default list: ` +
+      `knowledge that should outlive the issue (standing rules, design rationale, "do not" warnings), which belongs in the project's docs or CLAUDE.md; ` +
+      `and follow-up work mentioned in comments that has no issue yet, which gets its own create_issue.`,
     inputSchema: {
       type: "object",
       required: ["number", "state"],
@@ -389,13 +396,19 @@ async function listIssuesTool(client, args) {
         `${renderList(TARGET, [], countLabel)}\n(The "${config.markerLabel}" label does not exist yet; it is created automatically on first create_issue.)`
       );
     }
-    const { items, error } = await listIssues(client, { state, labelId: label.id, query });
+    const [{ items, error }, latest] = await Promise.all([
+      listIssues(client, { state, labelId: label.id, query }),
+      latestComments(client),
+    ]);
     if (error) return toolError(error);
-    return textResult(renderList(TARGET, items, countLabel, query));
+    return textResult(renderList(TARGET, items, countLabel, query, latest));
   }
-  const { items, error } = await listIssues(client, { state, labelId: null, query });
+  const [{ items, error }, latest] = await Promise.all([
+    listIssues(client, { state, labelId: null, query }),
+    latestComments(client),
+  ]);
   if (error) return toolError(error);
-  return textResult(renderList(TARGET, items, countLabel, query));
+  return textResult(renderList(TARGET, items, countLabel, query, latest));
 }
 
 async function getIssueTool(client, args) {

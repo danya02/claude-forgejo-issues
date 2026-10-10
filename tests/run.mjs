@@ -137,8 +137,15 @@ function defaultRoutes() {
   return [
     { method: "GET", re: /\/labels\?/, handler: () => ({ body: [LABEL] }) },
     { method: "GET", re: /\/issues\?/, handler: () => ({ body: [ISSUE_A, ISSUE_B] }) },
+    { method: "GET", re: /\/issues\/comments\?/, handler: () => ({ body: [] }) },
   ];
 }
+
+// The newest-comment sweep runs in parallel with the issues query, so its
+// position in the log is not fixed: order-sensitive checks drop it.
+const withoutComments = (log) => log.filter((q) => !q.includes("/issues/comments?"));
+const COMMENT_URL = (n) => `https://git.danya02.ru/api/v1/repos/danya/ci-demo/issues/${n}`;
+const FOOTER = "\n\n---\n<sub>Written by Claude with [claude-forgejo-issues](https://github.com/danya02/claude-forgejo-issues)</sub>";
 
 // ---------------------------------------------------------------------------
 // Unit: remote parsing (the gate's input)
@@ -453,7 +460,8 @@ await test("hook SessionStart: full TODO block on a forge repo", async () => {
   includes(hookUserMessage(r), "injected 2 open TODOs");
   ok(/\(Snapshot taken \d{4}-\d\d-\d\d \d\d:\d\d[+-]\d\d:\d\d; call list_issues/.test(hookContext(r)), "snapshot stamp");
   // The measured trap demands this exact order and the id-based filter:
-  eq(requests, [
+  eq(requests.filter((q) => q.includes("/issues/comments?since=")).length, 1, "one newest-comment sweep");
+  eq(withoutComments(requests), [
     "GET /api/v1/repos/danya/ci-demo/labels?limit=50&page=1",
     "GET /api/v1/repos/danya/ci-demo/issues?state=open&type=issues&labels=2&page=1&limit=50",
   ]);
@@ -550,6 +558,60 @@ await test("hook: token file (XDG seam) is honored when env is unset", async () 
   includes(hookContext(r), "#4 Fix CI on main");
 });
 
+await test("commentHeadline: plain first line, footer stripped, cross-link stubs skipped", () => {
+  eq(forgejo.commentHeadline(`**Decision (user):** work without the layer.\nDetails follow.${FOOTER}`), "Decision (user): work without the layer.");
+  eq(forgejo.commentHeadline(`\n## Applied 2026-09-30\nbody`), "Applied 2026-09-30");
+  eq(forgejo.commentHeadline(`Related: #40${FOOTER}`), null);
+  eq(forgejo.commentHeadline("Related: #3, #4"), null);
+  eq(forgejo.commentHeadline("Related: #3 -- supersedes it"), "Related: #3 -- supersedes it", "a link with news is kept");
+  eq(forgejo.commentHeadline("x".repeat(200)).length, 120);
+});
+
+await test("hook: each issue shows its newest real comment, with a legend", async () => {
+  routes = [
+    ...defaultRoutes().filter((r) => !String(r.re).includes("comments")),
+    {
+      method: "GET",
+      re: /\/issues\/comments\?/,
+      handler: () => ({
+        body: [
+          { issue_url: COMMENT_URL(4), created_at: "2026-10-02T10:00:00+03:00", body: `Started on it.${FOOTER}` },
+          { issue_url: COMMENT_URL(4), created_at: "2026-10-08T21:12:00+03:00", body: `**Decision:** dropped for now.${FOOTER}` },
+          { issue_url: COMMENT_URL(4), created_at: "2026-10-09T08:00:00+03:00", body: `Related: #9${FOOTER}` },
+          { issue_url: COMMENT_URL(12), created_at: "2026-10-09T08:00:00+03:00", body: "Not in the list." },
+        ],
+      }),
+    },
+  ];
+  requests = [];
+  const ctx = hookContext(await runHook(hookInput("SessionStart", nextSid())));
+  includes(ctx, "#4 Fix CI on main [agent-todo]\n    ↳ 10-08: Decision: dropped for now.");
+  includes(ctx, "#7 Add caching [agent-todo]");
+  ok(!/#7 Add caching \[agent-todo\]\n    ↳/.test(ctx), "no comment, no annotation");
+  includes(ctx, "newest comment from the last 14 days");
+  ok(!ctx.includes("Not in the list"), "comments on unlisted issues are ignored");
+});
+
+await test("hook: a failing comment sweep still injects the plain list", async () => {
+  routes = [
+    ...defaultRoutes().filter((r) => !String(r.re).includes("comments")),
+    { method: "GET", re: /\/issues\/comments\?/, handler: () => ({ status: 500, body: { message: "boom" } }) },
+  ];
+  const r = await runHook(hookInput("SessionStart", nextSid()));
+  includes(hookContext(r), "#4 Fix CI on main [agent-todo]");
+  ok(!hookContext(r).includes("↳"), "no annotations, no legend");
+  ok(!hookContext(r).includes("forgejo-issues-error"), "not reported as an error");
+});
+
+await test("latestComments drops everything when the sweep hits its page cap", async () => {
+  const page = Array.from({ length: forgejo.PAGE_SIZE }, (_, i) => ({
+    issue_url: COMMENT_URL(4), created_at: "2026-10-01T10:00:00+03:00", body: `note ${i}`,
+  }));
+  routes = [{ method: "GET", re: /\/issues\/comments\?/, handler: () => ({ body: page }) }];
+  const latest = await forgejo.latestComments(forgejo.forgeClient({ owner: "danya", repo: "ci-demo" }, "t"));
+  eq(latest.size, 0, "oldest-first pages: a capped sweep would show stale lines");
+});
+
 await test("hook: a token in plugin options is used", async () => {
   rmSync(join(pluginConfigDir, "token"), { force: true });
   routes = defaultRoutes();
@@ -559,7 +621,7 @@ await test("hook: a token in plugin options is used", async () => {
     CLAUDE_PLUGIN_OPTION_FORGEJO_TOKEN: "opt-token-789",
   });
   includes(hookContext(r), "#4 Fix CI on main", "hook proceeded with the option token");
-  eq(requests.length, 2, "labels + issues queried");
+  eq(requests.length, 3, "labels + issues + comments queried");
 });
 
 await test("hook: a tool call that waited on approval advises allowing the server, once", async () => {
@@ -715,7 +777,7 @@ await test("mcp: list_issues default view filters by label id", async () => {
   eq(res.error, undefined);
   eq(res.result.isError, undefined);
   includes(res.result.content[0].text, "#4 Fix CI on main [agent-todo]");
-  eq(requests, [
+  eq(withoutComments(requests), [
     "GET /api/v1/repos/danya/ci-demo/labels?limit=50&page=1",
     "GET /api/v1/repos/danya/ci-demo/issues?state=open&type=issues&labels=2&page=1&limit=50",
   ]);

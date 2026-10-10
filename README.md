@@ -76,7 +76,7 @@ carry examples.
 
 | Tool | Does |
 | --- | --- |
-| `list_issues` | One line per TODO (`#12 title [labels]`). Filtered to the marker label by default; `state` and `all` widen the view. |
+| `list_issues` | One line per TODO (`#12 title [labels]`), plus a `↳` line with the newest comment's first line when there is one from the last 14 days. Filtered to the marker label by default; `state` and `all` widen the view. |
 | `get_issue` | Full issue: description, labels, state, comment thread. |
 | `create_issue` | New TODO, tagged with the marker label automatically, attribution appended. |
 | `edit_issue` | Change title, body, and/or state. |
@@ -94,7 +94,11 @@ verification.
 
 At session start in a forge repo the hook injects the open TODO list as
 context and prints a visible line (`forgejo-issues: injected N open TODOs
-from owner/repo`) so the behavior is observable. When per-prompt refresh is
+from owner/repo`) so the behavior is observable. Each issue with a comment
+from the last 14 days also gets that comment's first line (`↳ 10-08:
+Decision: ...`), because comment threads are where results get overturned and
+scope changes while titles stay as filed; bare `Related: #N` comments are
+skipped. When per-prompt refresh is
 enabled, a moved list re-injects the full block and an unmoved list emits a
 one-liner (`TODOs unchanged (N open)`).
 

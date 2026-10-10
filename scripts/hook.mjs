@@ -15,6 +15,7 @@ import {
   config,
   dataDir,
   forgeClient,
+  latestComments,
   listIssues,
   logError,
   missingTokenMessage,
@@ -97,13 +98,16 @@ async function main() {
     return;
   }
 
-  const { items, error } = await listIssues(client, { state: "open", labelId: label.id });
+  const [{ items, error }, latest] = await Promise.all([
+    listIssues(client, { state: "open", labelId: label.id }),
+    latestComments(client),
+  ]);
   if (error) {
     reportOnce(event, sessionId, state, error);
     return;
   }
 
-  const text = renderList(target, items);
+  const text = renderList(target, items, "open", null, latest);
   const hash = createHash("sha256").update(text).digest("hex");
 
   if (event === "UserPromptSubmit" && state.hash === hash) {

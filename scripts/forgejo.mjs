@@ -383,6 +383,42 @@ export async function listIssues(client, { state = "open", labelId = null, query
   return await paginate(client, `/issues?state=${encodeURIComponent(stateParam)}&type=issues${labelParam}${queryParam}`);
 }
 
+// Newest comment per issue, for the list annotations. Comment threads are
+// where an issue's meaning moves (a result invalidated, a decision that
+// changes scope, "already done"), while titles stay as filed -- measured on
+// a 53-issue tracker. One repo-wide query bounded by `since`, not one per
+// issue. The API returns comments oldest first, so a capped sweep would keep
+// the stale end: when the cap is hit, annotations are dropped, not guessed.
+// Best-effort: an error yields no annotations, never a failed list.
+export const LATEST_COMMENT_DAYS = 14;
+
+export async function latestComments(client, now = new Date()) {
+  const since = new Date(now.getTime() - LATEST_COMMENT_DAYS * 86_400_000).toISOString();
+  const { items, error } = await paginate(client, `/issues/comments?since=${encodeURIComponent(since)}`);
+  const latest = new Map();
+  if (error || items.length >= MAX_PAGES * PAGE_SIZE) return latest;
+  for (const c of items) {
+    const m = /\/issues\/(\d+)$/.exec(String(c.issue_url ?? ""));
+    const line = commentHeadline(c.body);
+    const when = Date.parse(String(c.created_at ?? ""));
+    if (!m || line === null || !Number.isFinite(when)) continue;
+    const number = Number(m[1]);
+    const prev = latest.get(number);
+    if (!prev || when >= prev.when) latest.set(number, { when, date: String(c.created_at).slice(5, 10), line });
+  }
+  return latest;
+}
+
+// First line of a comment as plain text, or null for comments that carry no
+// news: bare "Related: #N" cross-links (create_issue posts those).
+export function commentHeadline(body, width = 120) {
+  const text = stripAttribution(body).text.trim();
+  if (text === "" || /^Related:(\s*#\d+,?)+$/.test(text)) return null;
+  const first = text.split("\n").find((l) => l.trim() !== "") ?? "";
+  const plain = first.replace(/^\s*(#+|[-*])\s+/, "").replace(/\*\*|__/g, "").replace(/\s+/g, " ").trim();
+  return plain.length > width ? `${plain.slice(0, width - 1).trimEnd()}…` : plain;
+}
+
 // Creates the marker label. Best-effort by design: two sessions racing to
 // create it is fine (422 just means the other one won), and a real failure
 // surfaces to the caller as the API error it is.
@@ -442,15 +478,31 @@ export function describeIssue(issue) {
 }
 
 // The injected/returned list. countLabel tracks the filter: "open" by
-// default, "closed"/"listed" for the other states.
-export function renderList(target, issues, countLabel = "open", query = null) {
+// default, "closed"/"listed" for the other states. latest (from
+// latestComments) adds a "↳" line per issue with a recent comment, plus a
+// legend saying what it is, only when at least one is shown.
+export function renderList(target, issues, countLabel = "open", query = null, latest = null) {
   const where = `${config.host}/${target.owner}/${target.repo}`;
   if (issues.length === 0) return `Forgejo TODOs on ${where} -- none ${countLabel}.`;
+  let annotated = 0;
   const line = (i) => {
+    const parts = [describeIssue(i)];
     const s = query === null ? null : searchSnippet(i, query);
-    return s === null ? describeIssue(i) : `${describeIssue(i)}\n    ${s}`;
+    if (s !== null) parts.push(`    ${s}`);
+    const c = latest?.get(Number(i.number));
+    if (c) {
+      parts.push(`    ↳ ${c.date}: ${c.line}`);
+      annotated += 1;
+    }
+    return parts.join("\n");
   };
-  return `Forgejo TODOs on ${where} -- ${issues.length} ${countLabel}:\n${issues.map(line).join("\n")}`;
+  const body = issues.map(line).join("\n");
+  const legend =
+    annotated > 0
+      ? `\n(↳ = first line of the issue's newest comment from the last ${LATEST_COMMENT_DAYS} days. ` +
+        `It can overturn what the title says; get_issue before acting on that issue.)`
+      : "";
+  return `Forgejo TODOs on ${where} -- ${issues.length} ${countLabel}:\n${body}${legend}`;
 }
 
 // Forgejo returns no highlights, so a search hit whose title lacks every
